@@ -175,21 +175,8 @@ if st.button("Run Simulation"):
     chart_placeholder = st.empty()
 
     time_now = 0.0
-
+    current_output = 0.0
     while time_now <= duration:
-
-        current_output = (
-            plant.position
-            if hasattr(
-                plant,
-                "position"
-            )
-            else getattr(
-                plant,
-                "output",
-                0.0
-            )
-        )
 
         control_signal = pid.compute(
             setpoint=target,
@@ -197,10 +184,11 @@ if st.button("Run Simulation"):
             dt=dt
         )
 
-        response = plant.update(
+        current_output = plant.update(
             control_signal,
             dt
         )
+        response = current_output
 
         time_data.append(
             time_now
