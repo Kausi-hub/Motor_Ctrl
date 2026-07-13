@@ -1,225 +1,479 @@
+# pages/1_Simulation.py
+
+import os
+
 import streamlit as st
 import pandas as pd
-import numpy as np
 import matplotlib.pyplot as plt
 
-from models.session import initialize_state
+from models.session import (
+    initialize_state,
+    reset_simulation_results
+)
+
+from models.pid import PIDController
+
+from models.plants import (
+    create_plant
+)
+
+from models.metrics import (
+    calculate_metrics
+)
+
+# ==========================================================
+# INITIALIZE
+# ==========================================================
 
 initialize_state()
 
-# ==========================================================
-# METRICS
-# ==========================================================
-
-def calculate_metrics(time_data,response_data,target):
-
-    if not response_data:
-        return {}
-
-    peak_value = max(response_data)
-    overshoot = max(0,((peak_value - target) / abs(target)) * 100)
-    final_value = response_data[-1]
-    steady_state_error = (target - final_value)
-
-    # Rise Time (10%-90%)
-    rise_time = None
-    t10 = None
-    t90 = None
-
-    for t, y in zip(time_data,response_data):
-
-        if t10 is None and y >= 0.1 * target: t10 = t
-
-        if t90 is None and y >= 0.9 * target:
-            t90 = t
-            break
-
-    if (t10 is not None and t90 is not None):
-        rise_time = t90 - t10
-
-    # Settling Time (2%)
-    settling_time = None
-    band = abs(target) * 0.02
-
-    for i in range(len(response_data)):
-
-        if all(abs(v - target) <= band for v in response_data[i:]):
-            settling_time = time_data[i]
-            break
-
-    return {
-
-        "Overshoot":round(overshoot, 3),
-        "Rise Time":
-            round(rise_time, 3)
-            if rise_time is not None
-            else None,
-        "Settling Time":
-            round(settling_time, 3)
-            if settling_time is not None
-            else None,
-        "Steady State Error":
-            round(steady_state_error,3),
-        "Peak Value":
-            round(peak_value,3)
-    }
+os.makedirs(
+    "reports",
+    exist_ok=True
+)
 
 # ==========================================================
 # PAGE
 # ==========================================================
 
-st.title("Simulation")
-st.write("Run a PID-based closed-loop simulation.")
+st.title(
+    "Control System Simulation"
+)
+
+st.write(
+    """
+    Simulate a PID-controlled plant and evaluate
+    performance metrics.
+    """
+)
 
 # ==========================================================
 # INPUTS
 # ==========================================================
 
-plant = st.selectbox("Plant",["Ideal Motor","First Order","Second Order","DC Motor"])
-target = st.number_input("Target",value=100.0)
+col1, col2 = st.columns(2)
 
-kp = st.number_input("Kp",value=1.0)
-ki = st.number_input("Ki",value=0.1)
-kd = st.number_input("Kd",value=0.05)
-duration = st.number_input("Simulation Duration (s)",value=20.0)
-dt = st.number_input("Time Step (s)",value=0.1)
+with col1:
+
+    plant_type = st.selectbox(
+        "Plant Type",
+        [
+            "Ideal Motor",
+            "First Order",
+            "Second Order",
+            "DC Motor"
+        ],
+        index=[
+            "Ideal Motor",
+            "First Order",
+            "Second Order",
+            "DC Motor"
+        ].index(
+            st.session_state.plant_type
+        )
+    )
+
+    target = st.number_input(
+        "Target Setpoint",
+        value=float(
+            st.session_state.target
+        )
+    )
+
+with col2:
+
+    duration = st.number_input(
+        "Simulation Duration (s)",
+        value=20.0,
+        step=1.0
+    )
+
+    dt = st.number_input(
+        "Time Step (s)",
+        value=0.01,
+        format="%.3f"
+    )
 
 # ==========================================================
-# SIMULATION
+# PID
 # ==========================================================
 
-if st.button("Run"):
+st.subheader("PID Controller")
+
+c1, c2, c3 = st.columns(3)
+
+with c1:
+
+    kp = st.number_input(
+        "Kp",
+        value=float(
+            st.session_state.kp
+        )
+    )
+
+with c2:
+
+    ki = st.number_input(
+        "Ki",
+        value=float(
+            st.session_state.ki
+        )
+    )
+
+with c3:
+
+    kd = st.number_input(
+        "Kd",
+        value=float(
+            st.session_state.kd
+        )
+    )
+
+# ==========================================================
+# RUN
+# ==========================================================
+
+if st.button("Run Simulation"):
+
+    reset_simulation_results()
+
+    st.session_state.plant_type = (
+        plant_type
+    )
+
+    st.session_state.target = (
+        target
+    )
+
+    st.session_state.kp = kp
+    st.session_state.ki = ki
+    st.session_state.kd = kd
+
+    plant = create_plant(
+        plant_type
+    )
+
+    pid = PIDController(
+        kp=kp,
+        ki=ki,
+        kd=kd,
+        output_limits=(-10000, 10000)
+    )
+
+    # ------------------------------------------------------
+    # STORAGE
+    # ------------------------------------------------------
 
     time_data = []
     response_data = []
     control_data = []
-    response = 0.0
-    integral = 0.0
-    previous_error = 0.0
-    t = 0.0
 
-    while t <= duration:
+    # ------------------------------------------------------
+    # LIVE CHART
+    # ------------------------------------------------------
 
-        error = target - response
-        integral += error * dt
-        derivative = (error - previous_error) / dt
-        control_signal = (kp * error + ki * integral + kd * derivative)
+    chart_placeholder = st.empty()
 
-        # Simple dynamic model
+    time_now = 0.0
 
-        if plant == "Ideal Motor":
+    while time_now <= duration:
 
-            response += (control_signal) * dt
+        current_output = (
+            plant.position
+            if hasattr(
+                plant,
+                "position"
+            )
+            else getattr(
+                plant,
+                "output",
+                0.0
+            )
+        )
 
-        elif plant == "First Order":
+        control_signal = pid.compute(
+            setpoint=target,
+            measurement=current_output,
+            dt=dt
+        )
 
-            response += (control_signal - response) * dt
+        response = plant.update(
+            control_signal,
+            dt
+        )
 
-        elif plant == "Second Order":
+        time_data.append(
+            time_now
+        )
 
-            response += (0.8 * (control_signal - response)) * dt
+        response_data.append(
+            response
+        )
 
-        elif plant == "DC Motor":
+        control_data.append(
+            control_signal
+        )
 
-            response += (0.6 * (control_signal - response)) * dt
+        time_now += dt
 
-        previous_error = error
-        time_data.append(t)
-        response_data.append(response)
-        control_data.append(control_signal)
-        t += dt
+    # ------------------------------------------------------
+    # SAVE DATA
+    # ------------------------------------------------------
 
-    # ======================================================
+    st.session_state.time_data = (
+        time_data
+    )
+
+    st.session_state.response_data = (
+        response_data
+    )
+
+    st.session_state.control_data = (
+        control_data
+    )
+
+    # ------------------------------------------------------
     # METRICS
-    # ======================================================
+    # ------------------------------------------------------
 
-    metrics = calculate_metrics(time_data,response_data,target)
+    metrics = calculate_metrics(
+        time_data,
+        response_data,
+        target,
+        dt
+    )
 
-    # ======================================================
-    # SAVE TO SESSION
-    # ======================================================
+    st.session_state.metrics = (
+        metrics
+    )
 
-    st.session_state.plant_type = plant
-    st.session_state.time_data = (time_data)
-    st.session_state.response_data = (response_data)
-    st.session_state.control_data = (control_data)
-    st.session_state.metrics = metrics
+    # ------------------------------------------------------
+    # METRICS DISPLAY
+    # ------------------------------------------------------
 
-    st.success("Simulation complete.")
+    st.success(
+        "Simulation completed."
+    )
 
-    # ======================================================
-    # DISPLAY METRICS
-    # ======================================================
+    st.subheader(
+        "Performance Metrics"
+    )
 
-    st.subheader("Performance Metrics")
+    m1, m2, m3, m4 = st.columns(4)
 
-    c1, c2, c3, c4, c5 = st.columns(5)
+    m1.metric(
+        "Overshoot (%)",
+        metrics["Overshoot"]
+    )
 
-    c1.metric("Overshoot %",metrics["Overshoot"])
+    m2.metric(
+        "Rise Time (s)",
+        metrics["Rise Time"]
+    )
 
-    c2.metric("Rise Time",
-        (
-            metrics["Rise Time"]
-            if metrics["Rise Time"]
-            is not None
-            else "N/A"
+    m3.metric(
+        "Settling Time (s)",
+        metrics["Settling Time"]
+    )
+
+    m4.metric(
+        "Steady State Error",
+        metrics[
+            "Steady State Error"
+        ]
+    )
+
+    m5, m6, m7 = st.columns(3)
+
+    m5.metric(
+        "Peak Value",
+        metrics["Peak Value"]
+    )
+
+    m6.metric(
+        "RMSE",
+        metrics["RMSE"]
+    )
+
+    m7.metric(
+        "IAE",
+        metrics.get(
+            "IAE",
+            "N/A"
         )
     )
-    c3.metric("Settling Time",
-        (
-            metrics["Settling Time"]
-            if metrics["Settling Time"]
-            is not None
-            else "N/A"
-        )
+
+    # ------------------------------------------------------
+    # RESPONSE PLOT
+    # ------------------------------------------------------
+
+    fig_response, ax = plt.subplots(
+        figsize=(10, 5)
     )
-    c4.metric("SS Error",metrics["Steady State Error"])
-    c5.metric("Peak Value",metrics["Peak Value"])
 
-    # ======================================================
-    # PLOTS
-    # ======================================================
+    ax.plot(
+        time_data,
+        response_data,
+        label="Response",
+        linewidth=2
+    )
 
-    st.subheader("Simulation Response")
-    df = pd.DataFrame({"Time": time_data,"Response": response_data,"Control": control_data})
-    st.line_chart(df.set_index("Time"))
-    st.dataframe(df,use_container_width=True)
+    ax.axhline(
+        target,
+        color="red",
+        linestyle="--",
+        label="Setpoint"
+    )
 
-    fig_response, ax = plt.subplots(figsize=(10, 5))
-    ax.plot(time_data, response_data, label="Response", color="blue")
-    ax.axhline(y=target, color="red", linestyle="--", label="Target")
-    ax.set_xlabel("Time")
-    ax.set_ylabel("Response")
-    ax.legend()
-    st.pyplot(fig_response)
-    response_plot_file = "response_plot.png"
-    st.session_state.response_plot = response_plot_file
-    fig_control, ax = plt.subplots(figsize=(10,5))
-    ax.plot(time_data,control_data,color="green")
-    ax.set_title("Control Effort")
-    ax.set_xlabel("Time (s)")
-    ax.set_ylabel("Control Signal")
+    ax.set_title(
+        "System Response"
+    )
+
+    ax.set_xlabel(
+        "Time (s)"
+    )
+
+    ax.set_ylabel(
+        "Output"
+    )
+
     ax.grid(True)
-    st.pyplot(fig_control)
-    control_plot_file = "control_plot.png"
-    fig_control.savefig(control_plot_file,bbox_inches="tight")
-    plt.close(fig_control)
-    st.session_state.control_plot = (control_plot_file)
-    st.write(st.session_state.response_plot)
-    st.write(st.session_state.control_plot)
 
+    ax.legend()
+
+    response_plot_path = (
+        "reports/response_plot.png"
+    )
+
+    fig_response.savefig(
+        response_plot_path,
+        bbox_inches="tight"
+    )
+
+    st.session_state.response_plot = (
+        response_plot_path
+    )
+
+    st.pyplot(
+        fig_response
+    )
+
+    plt.close(
+        fig_response
+    )
+
+    # ------------------------------------------------------
+    # CONTROL PLOT
+    # ------------------------------------------------------
+
+    fig_control, ax = plt.subplots(
+        figsize=(10, 5)
+    )
+
+    ax.plot(
+        time_data,
+        control_data,
+        color="green",
+        linewidth=2
+    )
+
+    ax.set_title(
+        "Control Effort"
+    )
+
+    ax.set_xlabel(
+        "Time (s)"
+    )
+
+    ax.set_ylabel(
+        "Control Signal"
+    )
+
+    ax.grid(True)
+
+    control_plot_path = (
+        "reports/control_plot.png"
+    )
+
+    fig_control.savefig(
+        control_plot_path,
+        bbox_inches="tight"
+    )
+
+    st.session_state.control_plot = (
+        control_plot_path
+    )
+
+    st.pyplot(
+        fig_control
+    )
+
+    plt.close(
+        fig_control
+    )
+
+    # ------------------------------------------------------
+    # DATA TABLE
+    # ------------------------------------------------------
+
+    st.subheader(
+        "Simulation Data"
+    )
+
+    df = pd.DataFrame({
+        "Time": time_data,
+        "Response": response_data,
+        "Control Signal": control_data
+    })
+
+    st.dataframe(
+        df,
+        use_container_width=True
+    )
+
+    st.download_button(
+        label="Download CSV",
+        data=df.to_csv(
+            index=False
+        ),
+        file_name="simulation_results.csv",
+        mime="text/csv"
+    )
+
+# ==========================================================
+# EXISTING RESULTS
+# ==========================================================
+
+if len(
+    st.session_state.response_data
+) > 0:
+
+    with st.expander(
+        "Current Session Metrics"
+    ):
+
+        st.json(
+            st.session_state.metrics
+        )
 
 # ==========================================================
 # SIDEBAR
 # ==========================================================
 
-st.sidebar.title("Navigation")
+st.sidebar.title(
+    "Navigation"
+)
+
 st.sidebar.info(
     """
-    1. Run Simulation
-    2. Auto Tune PID
-    3. Analyze Stability
-    4. Validate Requirements
-    5. Generate Reports
+    1. Simulation
+
+    2. Auto Tuning
+
+    3. Frequency Domain
+
+    4. Requirements Validation
+
+    5. Reports
     """
 )

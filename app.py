@@ -21,5 +21,5 @@ Use the navigation menu to access:
 
 st.image(
     "https://images.unsplash.com/photo-1518770660439-4636190af475",
-    use_container_width=True
+    width=True
 )

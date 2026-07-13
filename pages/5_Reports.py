@@ -1,6 +1,8 @@
-import streamlit as st
-import tempfile
+# pages/5_Reports.py
+
 import os
+import tempfile
+import streamlit as st
 
 from datetime import datetime
 
@@ -19,57 +21,86 @@ from reportlab.lib.styles import getSampleStyleSheet
 
 from models.session import initialize_state
 
+# ==========================================================
+# INITIALIZE
+# ==========================================================
+
 initialize_state()
 
 # ==========================================================
 # PAGE
 # ==========================================================
 
-st.title("Report Generation")
+st.title("Engineering Report Generator")
 
 st.write(
-    "Generate a PDF engineering report "
-    "containing simulation results, metrics, "
-    "plots, and requirement validation results."
+    """
+    Generate a comprehensive control systems
+    engineering report containing:
+
+    - Simulation metrics
+    - Requirement validation
+    - Stability analysis
+    - Response plots
+    - Frequency-domain plots
+    """
 )
 
 # ==========================================================
-# VERIFY DATA EXISTS
+# DATA AVAILABILITY CHECK
 # ==========================================================
 
-metrics = st.session_state.get("metrics",{})
+metrics = st.session_state.get(
+    "metrics",
+    {}
+)
 
 if not metrics:
 
-    st.warning("No simulation results found.\n\n""Run a simulation first.")
+    st.warning(
+        "No simulation results found.\n\n"
+        "Run a simulation before generating a report."
+    )
+
     st.stop()
 
 # ==========================================================
-# DISPLAY DATA
+# PREVIEW
 # ==========================================================
 
-st.subheader("Report Preview")
+st.subheader("Report Contents")
 
 st.write(
-    f"Plant Type: "
-    f"{st.session_state.get('plant_type', 'Unknown')}"
+    f"Plant Type: {st.session_state.plant_type}"
+)
+
+st.write(
+    f"Target: {st.session_state.target}"
 )
 
 st.json(metrics)
 
 # ==========================================================
-# GENERATE PDF
+# PDF GENERATION
 # ==========================================================
 
 if st.button("Generate PDF Report"):
 
-    pdf_file = tempfile.NamedTemporaryFile(delete=False,suffix=".pdf")
-    doc = SimpleDocTemplate(pdf_file.name)
+    temp_pdf = tempfile.NamedTemporaryFile(
+        delete=False,
+        suffix=".pdf"
+    )
+
+    doc = SimpleDocTemplate(
+        temp_pdf.name
+    )
+
     styles = getSampleStyleSheet()
+
     content = []
 
     # ======================================================
-    # TITLE
+    # TITLE PAGE
     # ======================================================
 
     content.append(
@@ -79,36 +110,85 @@ if st.button("Generate PDF Report"):
         )
     )
 
-    content.append(Spacer(1, 15))
-    content.append(Paragraph(f"Generated: {datetime.now()}",styles["BodyText"]))
+    content.append(
+        Spacer(1, 20)
+    )
 
     content.append(
         Paragraph(
-            f"Plant Type: "
-            f"{st.session_state.get('plant_type', 'Unknown')}",
+            f"Generated: {datetime.now()}",
             styles["BodyText"]
         )
     )
 
-    content.append(Spacer(1, 20))
+    content.append(
+        Paragraph(
+            f"Plant Type: {st.session_state.plant_type}",
+            styles["BodyText"]
+        )
+    )
+
+    content.append(
+        Paragraph(
+            f"Target Setpoint: {st.session_state.target}",
+            styles["BodyText"]
+        )
+    )
+
+    content.append(
+        Paragraph(
+            f"Kp: {st.session_state.kp}",
+            styles["BodyText"]
+        )
+    )
+
+    content.append(
+        Paragraph(
+            f"Ki: {st.session_state.ki}",
+            styles["BodyText"]
+        )
+    )
+
+    content.append(
+        Paragraph(
+            f"Kd: {st.session_state.kd}",
+            styles["BodyText"]
+        )
+    )
+
+    content.append(
+        Spacer(1, 20)
+    )
 
     # ======================================================
-    # METRICS TABLE
+    # PERFORMANCE METRICS
     # ======================================================
 
-    content.append(Paragraph("Performance Metrics",styles["Heading1"]))
+    content.append(
+        Paragraph(
+            "Performance Metrics",
+            styles["Heading1"]
+        )
+    )
 
     table_data = [
-        ["Metric", "Value"],
-        ["Overshoot (%)",str(metrics.get("Overshoot"))],
-        ["Rise Time (s)",str(metrics.get("Rise Time"))],
-        ["Settling Time (s)",str(metrics.get("Settling Time"))],
-        ["Steady State Error",str(metrics.get("Steady State Error"))],
-        ["Peak Value",str(metrics.get("Peak Value"))]
+        ["Metric", "Value"]
     ]
 
-    metrics_table = Table(table_data,colWidths=[250, 150])
+    for key, value in metrics.items():
+
+        table_data.append([
+            str(key),
+            str(value)
+        ])
+
+    metrics_table = Table(
+        table_data,
+        colWidths=[250, 180]
+    )
+
     metrics_table.setStyle(
+
         TableStyle([
 
             (
@@ -119,10 +199,10 @@ if st.button("Generate PDF Report"):
             ),
 
             (
-                "TEXTCOLOR",
+                "FONTNAME",
                 (0, 0),
                 (-1, 0),
-                colors.black
+                "Helvetica-Bold"
             ),
 
             (
@@ -134,18 +214,12 @@ if st.button("Generate PDF Report"):
             ),
 
             (
-                "FONTNAME",
-                (0, 0),
-                (-1, 0),
-                "Helvetica-Bold"
-            ),
-
-            (
                 "BACKGROUND",
                 (0, 1),
                 (-1, -1),
                 colors.whitesmoke
             )
+
         ])
     )
 
@@ -158,7 +232,7 @@ if st.button("Generate PDF Report"):
     )
 
     # ======================================================
-    # REQUIREMENT VALIDATION RESULTS
+    # REQUIREMENT VALIDATION
     # ======================================================
 
     validation_results = st.session_state.get(
@@ -188,12 +262,110 @@ if st.button("Generate PDF Report"):
                 )
             )
 
+        if (
+            "requirement_score"
+            in st.session_state
+        ):
+
+            content.append(
+                Spacer(1, 10)
+            )
+
+            content.append(
+                Paragraph(
+                    f"Compliance Score: "
+                    f"{st.session_state.requirement_score:.1f}%",
+                    styles["BodyText"]
+                )
+            )
+
+            content.append(
+                Spacer(1, 10)
+            )
+
+    # ======================================================
+    # RECOMMENDATIONS
+    # ======================================================
+
+    recommendations = st.session_state.get(
+        "recommendations",
+        []
+    )
+
+    if recommendations:
+
+        content.append(
+            Paragraph(
+                "Engineering Recommendations",
+                styles["Heading1"]
+            )
+        )
+
+        content.append(
+            Spacer(1, 10)
+        )
+
+        for rec in recommendations:
+
+            content.append(
+                Paragraph(
+                    f"• {rec}",
+                    styles["BodyText"]
+                )
+            )
+
         content.append(
             Spacer(1, 20)
         )
 
     # ======================================================
-    # NEW PAGE FOR PLOTS
+    # FREQUENCY DOMAIN
+    # ======================================================
+
+    gm = st.session_state.get(
+        "gain_margin"
+    )
+
+    pm = st.session_state.get(
+        "phase_margin"
+    )
+
+    if (
+        gm is not None
+        or pm is not None
+    ):
+
+        content.append(
+            Paragraph(
+                "Frequency Domain Analysis",
+                styles["Heading1"]
+            )
+        )
+
+        content.append(
+            Spacer(1, 10)
+        )
+
+        content.append(
+            Paragraph(
+                f"Gain Margin: {gm}",
+                styles["BodyText"]
+            )
+        )
+
+        content.append(
+            Paragraph(
+                f"Phase Margin: {pm}",
+                styles["BodyText"]
+            )
+        )
+
+        content.append(
+            Spacer(1, 20)
+        )
+
+    # ======================================================
+    # PLOTS PAGE
     # ======================================================
 
     content.append(
@@ -237,7 +409,7 @@ if st.button("Generate PDF Report"):
         )
 
     # ======================================================
-    # CONTROL EFFORT PLOT
+    # CONTROL EFFORT
     # ======================================================
 
     control_plot = st.session_state.get(
@@ -273,40 +445,126 @@ if st.button("Generate PDF Report"):
         )
 
     # ======================================================
+    # BODE PLOT
+    # ======================================================
+
+    bode_plot = st.session_state.get(
+        "bode_plot"
+    )
+
+    if (
+        bode_plot
+        and os.path.exists(bode_plot)
+    ):
+
+        content.append(
+            Paragraph(
+                "Bode Plot",
+                styles["Heading1"]
+            )
+        )
+
+        content.append(
+            Spacer(1, 10)
+        )
+
+        content.append(
+            Image(
+                bode_plot,
+                width=500,
+                height=300
+            )
+        )
+
+        content.append(
+            Spacer(1, 20)
+        )
+
+    # ======================================================
+    # NYQUIST PLOT
+    # ======================================================
+
+    nyquist_plot = st.session_state.get(
+        "nyquist_plot"
+    )
+
+    if (
+        nyquist_plot
+        and os.path.exists(nyquist_plot)
+    ):
+
+        content.append(
+            Paragraph(
+                "Nyquist Plot",
+                styles["Heading1"]
+            )
+        )
+
+        content.append(
+            Spacer(1, 10)
+        )
+
+        content.append(
+            Image(
+                nyquist_plot,
+                width=450,
+                height=450
+            )
+        )
+
+        content.append(
+            Spacer(1, 20)
+        )
+
+    # ======================================================
     # BUILD PDF
     # ======================================================
 
     doc.build(content)
 
     st.success(
-        "PDF report generated successfully."
+        "Engineering report generated successfully."
     )
 
+    st.session_state.report_generated = True
+
     # ======================================================
-    # DOWNLOAD BUTTON
+    # DOWNLOAD
     # ======================================================
 
     with open(
-        pdf_file.name,
+        temp_pdf.name,
         "rb"
-    ) as file:
+    ) as pdf:
 
         st.download_button(
             label="Download PDF Report",
-            data=file,
-            file_name="Control_Engineering_Report.pdf",
+            data=pdf,
+            file_name=(
+                f"Control_Report_"
+                f"{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+            ),
             mime="application/pdf"
         )
 
-    # ======================================================
-    # CLEANUP INFO
-    # ======================================================
+# ==========================================================
+# SIDEBAR
+# ==========================================================
 
-    st.info(
-        "Report includes:\n"
-        "- Plant Information\n"
-        "- Performance Metrics\n"
-        "- Requirement Validation Results\n"
-        "- Response Plot\n"
-        "- Control Effort Plot"
-    )
+st.sidebar.title(
+    "Navigation"
+)
+
+st.sidebar.info(
+    """
+    1. Simulation
+
+    2. Auto Tuning
+
+    3. Frequency Domain
+
+    4. Requirements Validation
+
+    5. Reports
+    """
+)
