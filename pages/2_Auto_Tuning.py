@@ -104,21 +104,13 @@ The application then computes: Kp = 0.6 × Ku, Ki = 1.2 × Ku / Pu, Kd = 0.075 �
 # ==========================================================
 # SIDEBAR
 # ==========================================================
-
-st.sidebar.title(
-    "Navigation"
-)
-
+st.sidebar.title("Navigation")
 st.sidebar.info(
     """
     1. Simulation
-
     2. Auto Tuning
-
     3. Frequency Domain
-
     4. Requirements Validation
-
     5. Reports
     """
 )

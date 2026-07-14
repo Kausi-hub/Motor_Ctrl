@@ -55,8 +55,7 @@ class FirstOrderPlant(BasePlant):
 
 class SecondOrderPlant(BasePlant):
     """
-    Second-order system.
-    Transfer Function:
+    Second-order system. Transfer Function:
                     wn²*K
         --------------------------
         s² + 2ζwns + wn²
@@ -113,7 +112,6 @@ class DCMotor(BasePlant):
         return self.position
 
 # PLANT FACTORY
-
 def create_plant(plant_type):
     """
     Factory function.
